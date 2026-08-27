@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EXIF INSPECTOR // NEO-BRUTALIST</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Font: Public Sans / Space Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700;900&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+  <!-- EXIFR Library (Supports JPEG, HEIC, TIFF, PNG, WebP) -->
+  <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+
+  <!-- Leaflet Map CDN -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    body {
+      font-family: 'Space Grotesk', sans-serif;
+      background-color: #fef08a; /* Neo Yellow background */
+    }
+    .mono {
+      font-family: 'Space Mono', monospace;
+    }
+    /* Neo-Brutalism Core Utilities */
+    .neo-box {
+      background: #ffffff;
+      border: 3px solid #000000;
+      box-shadow: 5px 5px 0px #000000;
+    }
+    .neo-box-dark {
+      background: #000000;
+      border: 3px solid #000000;
+      box-shadow: 5px 5px 0px #000000;
+      color: #ffffff;
+    }
+    .neo-btn {
+      border: 3px solid #000000;
+      box-shadow: 4px 4px 0px #000000;
+      transition: all 0.1s ease-in-out;
+      font-weight: 700;
+    }
+    .neo-btn:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 6px 6px 0px #000000;
+    }
+    .neo-btn:active {
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0px #000000;
+    }
+    .neo-badge {
+      border: 2px solid #000000;
+      box-shadow: 2px 2px 0px #000000;
+    }
+    /* Leaflet Overrides */
+    .leaflet-container {
+      border: 3px solid #000000 !important;
+      border-radius: 0px !important;
+    }
+  </style>
+</head>
+<body class="text-black min-h-screen p-4 md:p-8">
+
+  <div class="max-w-5xl mx-auto space-y-6">
+
+    <!-- Header Section -->
+    <header class="neo-box p-6 bg-cyan-300 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div>
+        <div class="inline-block bg-black text-white px-3 py-1 text-xs uppercase tracking-widest font-mono font-bold mb-2">
+          CLIENT-SIDE // ZERO-UPLOAD
+        </div>
+        <h1 class="text-3xl md:text-5xl font-black uppercase tracking-tight">EXIF INSPECTOR</h1>
+        <p class="font-bold text-sm text-black/80 mt-1">Extract GPS, Camera Optics, Timestamps, & Raw Binary Tags</p>
+      </div>
+      <div class="flex gap-2">
+        <span class="neo-badge bg-rose-400 font-mono text-xs px-2.5 py-1 font-bold">HEIC</span>
+        <span class="neo-badge bg-emerald-400 font-mono text-xs px-2.5 py-1 font-bold">JPEG</span>
+        <span class="neo-badge bg-orange-400 font-mono text-xs px-2.5 py-1 font-bold">TIFF</span>
+        <span class="neo-badge bg-indigo-400 text-white font-mono text-xs px-2.5 py-1 font-bold">PNG</span>
+      </div>
+    </header>
+
+    <!-- Upload Dropzone -->
+    <section class="neo-box p-8 bg-white text-center cursor-pointer border-dashed border-4 border-black" id="dropZone">
+      <input type="file" id="fileInput" accept="image/*,.heic,.heif,.tiff" class="hidden" />
+      <div class="space-y-3">
+        <div class="w-16 h-16 bg-lime-300 border-3 border-black mx-auto flex items-center justify-center neo-btn">
+          <svg class="w-8 h-8 text-black" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path>
+          </svg>
+        </div>
+        <h2 class="text-xl md:text-2xl font-black uppercase">DROP FILE OR CLICK TO SCAN</h2>
+        <p class="text-xs md:text-sm font-bold text-gray-600 mono">Images are processed 100% locally in your RAM.</p>
+      </div>
+    </section>
+
+    <!-- Status / Error Notification -->
+    <div id="statusBox" class="neo-box p-4 bg-rose-300 font-bold hidden flex items-center gap-3">
+      <span class="text-xl">⚠️</span>
+      <span id="statusMsg" class="mono text-sm"></span>
+    </div>
+
+    <!-- Main Content Output -->
+    <main id="outputGrid" class="hidden space-y-6">
+
+      <!-- Action Toolbar -->
+      <div class="flex flex-wrap gap-3">
+        <button id="btnExportJson" class="neo-btn bg-violet-400 text-black px-4 py-2.5 uppercase text-xs md:text-sm flex items-center gap-2">
+          💾 Download Metadata (JSON)
+        </button>
+        <button id="btnStripExif" class="neo-btn bg-emerald-400 text-black px-4 py-2.5 uppercase text-xs md:text-sm flex items-center gap-2">
+          🛡️ Export Clean Image (No EXIF)
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Left Column: Location & Map -->
+        <div class="lg:col-span-6 space-y-6">
+          <div class="neo-box p-5 bg-white space-y-4">
+            <div class="flex items-center justify-between border-b-2 border-black pb-2">
+              <h3 class="font-black text-lg uppercase flex items-center gap-2">
+                <span class="w-3 h-3 bg-rose-500 inline-block border border-black"></span> GPS Telemetry
+              </h3>
+              <span id="gpsStatusBadge" class="neo-badge text-xs px-2 py-0.5 font-bold mono bg-lime-300">LOCATED</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 mono text-xs">
+              <div class="p-3 bg-zinc-100 border-2 border-black">
+                <span class="text-gray-500 block">LATITUDE</span>
+                <span id="valLat" class="text-sm font-black">-</span>
+              </div>
+              <div class="p-3 bg-zinc-100 border-2 border-black">
+                <span class="text-gray-500 block">LONGITUDE</span>
+                <span id="valLon" class="text-sm font-black">-</span>
+              </div>
+              <div class="p-3 bg-zinc-100 border-2 border-black">
+                <span class="text-gray-500 block">ALTITUDE</span>
+                <span id="valAlt" class="text-sm font-black">-</span>
+              </div>
+              <div class="p-3 bg-zinc-100 border-2 border-black">
+                <span class="text-gray-500 block">MAPS LINK</span>
+                <a id="linkMaps" href="#" target="_blank" class="text-indigo-600 underline font-black block truncate">Open External ↗</a>
+              </div>
+            </div>
+
+            <!-- Reverse Geocoded Address -->
+            <div class="p-3 bg-amber-100 border-2 border-black">
+              <span class="mono text-xs text-gray-500 block">RESOLVED ADDRESS (NOMINATIM)</span>
+              <p id="valAddress" class="text-xs font-bold mt-1">Resolving coordinates...</p>
+            </div>
+
+            <!-- Map -->
+            <div id="mapContainer" class="w-full h-64 neo-box"></div>
+          </div>
+        </div>
+
+        <!-- Right Column: Hardware, Exposure & Preview -->
+        <div class="lg:col-span-6 space-y-6">
+
+          <!-- Image Preview & File Meta -->
+          <div class="neo-box p-5 bg-white space-y-4">
+            <div class="flex items-center justify-between border-b-2 border-black pb-2">
+              <h3 class="font-black text-lg uppercase flex items-center gap-2">
+                <span class="w-3 h-3 bg-sky-500 inline-block border border-black"></span> File Details
+              </h3>
+              <span id="fileSizeBadge" class="mono text-xs font-bold">-</span>
+            </div>
+            <div class="flex gap-4 items-start">
+              <img id="imgPreview" class="w-28 h-28 object-cover border-2 border-black shadow-[3px_3px_0px_#000]" alt="Preview" />
+              <div class="space-y-1 text-xs mono">
+                <p><strong class="uppercase">Name:</strong> <span id="valFileName" class="break-all">-</span></p>
+                <p><strong class="uppercase">Type:</strong> <span id="valFileType">-</span></p>
+                <p><strong class="uppercase">Resolution:</strong> <span id="valDim">-</span></p>
+                <p><strong class="uppercase">Date:</strong> <span id="valDate">-</span></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Capture & Camera Optics -->
+          <div class="neo-box p-5 bg-pink-200 space-y-3">
+            <h3 class="font-black text-lg uppercase border-b-2 border-black pb-2 flex items-center gap-2">
+              <span class="w-3 h-3 bg-black inline-block"></span> Camera & Shot Settings
+            </h3>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mono text-xs">
+              <div class="p-2 bg-white border-2 border-black">
+                <span class="text-gray-500 block text-[10px]">DEVICE MAKE</span>
+                <span id="valMake" class="font-bold truncate block">-</span>
+              </div>
+              <div class="p-2 bg-white border-2 border-black">
+                <span class="text-gray-500 block text-[10px]">CAMERA MODEL</span>
+                <span id="valModel" class="font-bold truncate block">-</span>
+              </div>
+              <div class="p-2 bg-white border-2 border-black">
+                <span class="text-gray-500 block text-[10px]">LENS</span>
+                <span id="valLens" class="font-bold truncate block">-</span>
+              </div>
+              <div class="p-2 bg-white border-2 border-black">
+                <span class="text-gray-500 block text-[10px]">APERTURE</span>
+                <span id="valFNumber" class="font-bold">-</span>
+              </div>
+              <div class="p-2 bg-white border-2 border-black">
+                <span class="text-gray-500 block text-[10px]">SHUTTER SPEED</span>
+                <span id="valExposure" class="font-bold">-</span>
+              </div>
+              <div class="p-2 bg-white border-2 border-black">
+                <span class="text-gray-500 block text-[10px]">ISO SPEED</span>
+                <span id="valIso" class="font-bold">-</span>
+              </div>
+              <div class="p-2 bg-white border-2 border-black">
+                <span class="text-gray-500 block text-[10px]">FOCAL LENGTH</span>
+                <span id="valFocal" class="font-bold">-</span>
+              </div>
+              <div class="p-2 bg-white border-2 border-black">
+                <span class="text-gray-500 block text-[10px]">FLASH</span>
+                <span id="valFlash" class="font-bold truncate block">-</span>
+              </div>
+              <div class="p-2 bg-white border-2 border-black">
+                <span class="text-gray-500 block text-[10px]">COLOR SPACE</span>
+                <span id="valColorSpace" class="font-bold">-</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Raw Metadata Viewer -->
+      <section class="neo-box p-5 bg-white space-y-3">
+        <div class="flex items-center justify-between border-b-2 border-black pb-2">
+          <h3 class="font-black text-lg uppercase flex items-center gap-2">
+            <span class="w-3 h-3 bg-violet-500 inline-block border border-black"></span> Raw Parsed EXIF Dictionary
+          </h3>
+          <span id="tagCountBadge" class="neo-badge bg-yellow-300 mono text-xs px-2 py-0.5 font-bold">0 TAGS FOUND</span>
+        </div>
+        <div class="max-h-72 overflow-y-auto border-2 border-black bg-zinc-950 p-4 neo-box-dark">
+          <pre id="rawJsonDisplay" class="mono text-xs text-lime-400 whitespace-pre-wrap"></pre>
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <script>
+    let map = null;
+    let marker = null;
+    let currentRawData = null;
+    let currentFile = null;
+
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const outputGrid = document.getElementById('outputGrid');
+    const statusBox = document.getElementById('statusBox');
+    const statusMsg = document.getElementById('statusMsg');
+
+    // Drag-and-drop triggers
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('bg-lime-100'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('bg-lime-100'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('bg-lime-100');
+      if (e.dataTransfer.files.length) processImage(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length) processImage(e.target.files[0]);
+    });
+
+    function showError(msg) {
+      statusMsg.textContent = msg;
+      statusBox.classList.remove('hidden');
+      outputGrid.classList.add('hidden');
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    async function processImage(file) {
+      currentFile = file;
+      statusBox.classList.add('hidden');
+
+      // Set basic file info
+      document.getElementById('valFileName').textContent = file.name;
+      document.getElementById('valFileType').textContent = file.type || 'Unknown';
+      document.getElementById('fileSizeBadge').textContent = formatBytes(file.size);
+
+      // Local preview
+      const previewUrl = URL.createObjectURL(file);
+      document.getElementById('imgPreview').src = previewUrl;
+
+      try {
+        // Parse metadata using exifr (full options enabled)
+        const exifData = await exifr.parse(file, {
+          tiff: true,
+          xmp: true,
+          icc: true,
+          jfif: true,
+          ihdr: true,
+          gps: true,
+          reviveValues: true
+        });
+
+        if (!exifData) {
+          showError('No EXIF or metadata records detected in this file.');
+          return;
+        }
+
+        currentRawData = exifData;
+        populateData(exifData, file);
+        outputGrid.classList.remove('hidden');
+
+      } catch (err) {
+        showError(`Parsing Error: ${err.message || 'Corrupted or unsupported format.'}`);
+      }
+    }
+
+    async function populateData(data, file) {
+      // 1. Raw Tags Output
+      const cleanJson = JSON.stringify(data, (key, value) => {
+        if (value instanceof Uint8Array || value instanceof ArrayBuffer) return `[Binary Buffer (${value.byteLength || value.length} bytes)]`;
+        return value;
+      }, 2);
+
+      document.getElementById('rawJsonDisplay').textContent = cleanJson;
+      document.getElementById('tagCountBadge').textContent = `${Object.keys(data).length} TAGS PARSED`;
+
+      // 2. Hardware & Camera Specs
+      document.getElementById('valMake').textContent = data.Make || 'N/A';
+      document.getElementById('valModel').textContent = data.Model || 'N/A';
+      document.getElementById('valLens').textContent = data.LensModel || data.LensInfo || 'N/A';
+      document.getElementById('valFNumber').textContent = data.FNumber ? `ƒ/${data.FNumber}` : 'N/A';
+      document.getElementById('valExposure').textContent = data.ExposureTime ? (data.ExposureTime < 1 ? `1/${Math.round(1/data.ExposureTime)}s` : `${data.ExposureTime}s`) : 'N/A';
+      document.getElementById('valIso').textContent = data.ISO || data.ISOSpeedRatings || 'N/A';
+      document.getElementById('valFocal').textContent = data.FocalLength ? `${data.FocalLength} mm` : 'N/A';
+      document.getElementById('valFlash').textContent = data.Flash || 'N/A';
+      document.getElementById('valColorSpace').textContent = data.ColorSpace === 1 ? 'sRGB' : (data.ColorSpace || 'Uncalibrated');
+
+      // 3. Timestamps & Dimensions
+      document.getElementById('valDate').textContent = data.DateTimeOriginal ? new Date(data.DateTimeOriginal).toLocaleString() : (data.CreateDate ? new Date(data.CreateDate).toLocaleString() : 'N/A');
+      const width = data.ExifImageWidth || data.ImageWidth || data.rawImageWidth;
+      const height = data.ExifImageHeight || data.ImageHeight || data.rawImageHeight;
+      document.getElementById('valDim').textContent = (width && height) ? `${width} × ${height} px` : 'Read from header';
+
+      // 4. GPS & Map Coordinates
+      const hasGps = typeof data.latitude === 'number' && typeof data.longitude === 'number';
+      const mapContainer = document.getElementById('mapContainer');
+      const gpsBadge = document.getElementById('gpsStatusBadge');
+
+      if (hasGps) {
+        const lat = data.latitude.toFixed(6);
+        const lon = data.longitude.toFixed(6);
+        const alt = data.GPSAltitude ? `${data.GPSAltitude.toFixed(1)} m (${(data.GPSAltitude * 3.28084).toFixed(1)} ft)` : 'N/A';
+
+        document.getElementById('valLat').textContent = lat;
+        document.getElementById('valLon').textContent = lon;
+        document.getElementById('valAlt').textContent = alt;
+
+        const mapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
+        document.getElementById('linkMaps').href = mapsUrl;
+
+        gpsBadge.textContent = 'GPS ACTIVE';
+        gpsBadge.className = 'neo-badge text-xs px-2 py-0.5 font-bold mono bg-lime-300';
+        mapContainer.style.display = 'block';
+
+        // Render OpenStreetMap
+        if (!map) {
+          map = L.map('mapContainer').setView([lat, lon], 14);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+          }).addTo(map);
+          marker = L.marker([lat, lon]).addTo(map);
+        } else {
+          map.setView([lat, lon], 14);
+          marker.setLatLng([lat, lon]);
+          map.invalidateSize();
+        }
+
+        // Reverse Geocode with OpenStreetMap Nominatim
+        reverseGeocode(data.latitude, data.longitude);
+
+      } else {
+        document.getElementById('valLat').textContent = 'NOT EMBEDDED';
+        document.getElementById('valLon').textContent = 'NOT EMBEDDED';
+        document.getElementById('valAlt').textContent = 'N/A';
+        document.getElementById('valAddress').textContent = 'No coordinates available in metadata.';
+        document.getElementById('linkMaps').removeAttribute('href');
+
+        gpsBadge.textContent = 'NO GPS FOUND';
+        gpsBadge.className = 'neo-badge text-xs px-2 py-0.5 font-bold mono bg-rose-300';
+        mapContainer.style.display = 'none';
+      }
+    }
+
+    async function reverseGeocode(lat, lon) {
+      const addressBox = document.getElementById('valAddress');
+      addressBox.textContent = 'Querying OpenStreetMap Nominatim...';
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+        const result = await res.json();
+        addressBox.textContent = result.display_name || 'Address resolution returned empty.';
+      } catch (err) {
+        addressBox.textContent = 'Unable to resolve address (Network / Rate Limited).';
+      }
+    }
+
+    // Feature 1: Export Metadata JSON
+    document.getElementById('btnExportJson').addEventListener('click', () => {
+      if (!currentRawData) return;
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentRawData, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `metadata_${Date.now()}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+    });
+
+    // Feature 2: Strip EXIF Data via Canvas Re-render
+    document.getElementById('btnStripExif').addEventListener('click', () => {
+      if (!currentFile) return;
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        canvas.toBlob((blob) => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `stripped_${currentFile.name.replace(/\.[^/.]+$/, "")}.jpg`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        }, 'image/jpeg', 0.95);
+      };
+      img.src = document.getElementById('imgPreview').src;
+    });
+  </script>
+</body>
+</html>
