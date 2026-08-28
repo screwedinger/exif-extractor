@@ -61,6 +61,27 @@ function App() {
     return () => window.removeEventListener('paste', paste);
   }, [processFiles]);
 
+  const removePhoto = (index: number) => {
+    setPhotos(prev => {
+      const removed = prev[index];
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      const next = prev.filter((_, i) => i !== index);
+      setSelected(current => Math.min(current > index ? current - 1 : current, Math.max(0, next.length - 1)));
+      return next;
+    });
+    setStatus('Photo removed from queue.');
+  };
+
+  const clearAll = () => {
+    photos.forEach(photo => URL.revokeObjectURL(photo.previewUrl));
+    mapInstance.current?.remove();
+    mapInstance.current = null;
+    marker.current = null;
+    setPhotos([]);
+    setSelected(0);
+    setStatus('Photo queue cleared.');
+  };
+
   const photo = photos[selected];
   const data = photo?.data;
   const hasGps = typeof data?.latitude === 'number' && typeof data?.longitude === 'number';
@@ -112,7 +133,7 @@ function App() {
     {status && <div className="neo status">⚠️ <span>{status}</span></div>}
     {photos.length > 0 && <main className="content">
       <div className="toolbar"><button className="btn violet" onClick={exportJson}>💾 SAVE FULL JSON REPORT</button><button className="btn green" onClick={stripExif}>🛡️ DOWNLOAD PRIVACY COPY</button></div>
-      <div className="neo queue"><div className="queue-head"><strong>PHOTO QUEUE</strong><span>{photos.length} LOADED</span></div><div className="thumbs">{photos.map((item, i) => <button className={`thumb ${i === selected ? 'selected' : ''}`} key={`${item.file.name}-${i}`} onClick={() => setSelected(i)}><img src={item.previewUrl} alt=""/><span>{i + 1}</span></button>)}</div></div>
+      <div className="neo queue"><div className="queue-head"><strong>PHOTO QUEUE</strong><div className="queue-actions"><span>{photos.length} LOADED</span><button className="queue-btn" onClick={() => inputRef.current?.click()}>+ ADD MORE</button><button className="queue-btn danger" onClick={clearAll}>CLEAR ALL</button></div></div><div className="thumbs">{photos.map((item, i) => <div className={`thumb-wrap ${i === selected ? 'selected' : ''}`} key={`${item.file.name}-${i}`}><button className="thumb" onClick={() => setSelected(i)}><img src={item.previewUrl} alt=""/><span>{i + 1}</span></button><button className="remove-thumb" aria-label={`Remove ${item.file.name}`} onClick={() => removePhoto(i)}>×</button></div>)}</div></div>
       {photo && <>
         <section className="neo card"><div className="card-head"><h3>▣ PHOTO PREVIEW & METADATA</h3><span>{formatBytes(photo.file.size)}</span></div><div className="preview-grid"><div className="preview"><img src={photo.previewUrl} alt={photo.file.name} onError={e => e.currentTarget.style.display='none'} /></div><div className="facts"><Fact label="FILE NAME" value={photo.file.name}/><div className="two"><Fact label="MIME TYPE" value={photo.file.type || 'image/heic (binary)'}/><Fact label="IMAGE DIMENSIONS" value={data ? `${data.ExifImageWidth || data.ImageWidth || data.rawImageWidth || '?'} × ${data.ExifImageHeight || data.ImageHeight || data.rawImageHeight || '?'} px` : 'N/A'}/></div><Fact label="TIMESTAMP (ORIGINAL)" value={data?.DateTimeOriginal ? new Date(data.DateTimeOriginal).toLocaleString() : data?.CreateDate ? new Date(data.CreateDate).toLocaleString() : 'N/A'}/></div></div></section>
         <div className="columns"><section className="neo card"><div className="card-head"><h3>◉ GEOLOCATION TELEMETRY</h3><span className={hasGps ? 'good' : 'bad'}>{hasGps ? 'GPS ACTIVE' : 'NO GPS FOUND'}</span></div><div className="two"><Fact label="LATITUDE" value={hasGps ? data!.latitude.toFixed(6) : 'NOT EMBEDDED'}/><Fact label="LONGITUDE" value={hasGps ? data!.longitude.toFixed(6) : 'NOT EMBEDDED'}/><Fact label="ALTITUDE" value={hasGps && typeof data?.GPSAltitude === 'number' ? `${data.GPSAltitude.toFixed(1)} m` : 'N/A'}/><Fact label="MAPS LINK" value={hasGps ? 'External Map ↗' : 'N/A'} href={hasGps ? `https://www.google.com/maps?q=${data!.latitude},${data!.longitude}` : undefined}/></div>{hasGps && <div ref={mapRef} className="map"/>}</section>
