@@ -14,8 +14,8 @@ function formatBytes(bytes: number) {
 }
 
 function cleanJson(data: Metadata) {
-  return JSON.stringify(data, (key, value) => {
-    if (value instanceof Uint8Array || value instanceof ArrayBuffer) return `[Binary Buffer (${value.byteLength || value.length} bytes)]`;
+  return JSON.stringify(data, (_key, value) => {
+    if (value instanceof Uint8Array || value instanceof ArrayBuffer) return `[Binary Buffer (${value.byteLength} bytes)]`;
     return value;
   }, 2);
 }
